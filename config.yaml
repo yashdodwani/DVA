@@ -1,0 +1,32 @@
+# DVA ADAS Co-Pilot Configuration
+# All thresholds and parameters are configurable here without code changes.
+
+# ─── Decider Module ───────────────────────────────────────────────────────────
+decider:
+  ear_threshold: 0.21          # Eye Aspect Ratio below this → drowsy signal
+  window_frames: 15            # Consecutive frames below threshold to trigger
+  escalation_window_frames: 30 # Longer window for TIGHTEN_LANE_ASSIST escalation
+  cooldown_frames: 10          # Frames above threshold to end a risk episode
+  heartbeat_every_n_frames: 5  # Emit EAR heartbeat every N frames (no episode)
+
+# ─── Verifier Module ──────────────────────────────────────────────────────────
+verifier:
+  yaw_threshold_deg: 15.0        # Max yaw to consider head "forward-facing"
+  pitch_threshold_deg: 15.0      # Max pitch to consider head "forward-facing"
+  min_speed_for_action_kmh: 20.0 # Min speed for INCREASE_FOLLOWING_DISTANCE
+  steering_angle_threshold_deg: 10.0 # Max steering angle for TIGHTEN_LANE_ASSIST
+
+# ─── Simulated CAN Bus Module ─────────────────────────────────────────────────
+can_bus:
+  tick_interval_ms: 200          # How often to emit a new CAN reading
+  speed_range_kmh: [40, 90]      # Normal operating speed range
+  steering_normal_range_deg: [-10, 10] # Normal steering range
+
+# ─── Actuation Log Module ─────────────────────────────────────────────────────
+actuation_log:
+  ring_buffer_size: 50           # Max events stored in history
+
+# ─── Server ───────────────────────────────────────────────────────────────────
+server:
+  host: "0.0.0.0"
+  port: 8000
