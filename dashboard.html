@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DVA ADAS Co-Pilot — Test Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --blue: #58a6ff;
+    --orange: #e3b341;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+  }
+  header h1 { font-size: 15px; font-weight: 600; }
+  #conn-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: var(--red);
+    color: #fff;
+    font-weight: 600;
+  }
+  #conn-badge.connected { background: var(--green); }
+  header .spacer { flex: 1; }
+  #backend-url { font-size: 11px; color: var(--muted); }
+
+  /* ── Main grid ───────────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 280px 1fr 260px;
+    grid-template-rows: 1fr;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Panel base ──────────────────────────────────────────────── */
+  .panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel:last-child { border-right: none; }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Left panel: Vision + Scenario ──────────────────────────── */
+  #cam-wrap {
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 4/3;
+  }
+  #cam-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #cam-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    padding: 6px 8px;
+    background: linear-gradient(transparent 60%, rgba(0,0,0,0.7));
+    pointer-events: none;
+  }
+  #cam-label { font-size: 10px; color: var(--muted); }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .metric-label { color: var(--muted); font-size: 11px; }
+  .metric-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric-sub { font-size: 11px; color: var(--muted); }
+
+  canvas#ear-sparkline {
+    width: 100%;
+    height: 50px;
+    border-radius: 4px;
+    background: #0d1117;
+    display: block;
+  }
+
+  /* EAR status bar */
+  #ear-bar-wrap {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  #ear-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.1s, background 0.2s;
+    background: var(--green);
+  }
+
+  /* Head pose */
+  canvas#pose-canvas {
+    width: 100%;
+    height: 80px;
+    border-radius: 4px;
+    background: #0d1117;
+    display: block;
+  }
+
+  /* ── Scenario buttons ────────────────────────────────────────── */
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:active { transform: scale(0.97); }
+  .btn-a { background: var(--green);  color: #000; }
+  .btn-b { background: var(--yellow); color: #000; }
+  .btn-c { background: var(--red);    color: #fff; }
+  .btn-r { background: var(--border); color: var(--text); grid-column: span 2; }
+  #scenario-status {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    min-height: 16px;
+  }
+
+  /* ── Centre panel: Event log ─────────────────────────────────── */
+  #episode-banner {
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #episode-banner.episode-active { border-color: var(--yellow); }
+  #episode-banner.episode-approved { border-color: var(--green); }
+  #episode-banner.episode-blocked { border-color: var(--red); }
+  #ep-status { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  #ep-action { font-size: 14px; font-weight: 700; }
+  #ep-decision { font-size: 12px; margin-top: 4px; }
+  #ep-id { font-size: 10px; color: var(--muted); margin-top: 4px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #event-log {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #event-log::-webkit-scrollbar { width: 4px; }
+  #event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-entry {
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 11px;
+    border-left: 3px solid transparent;
+    background: var(--panel);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 8px;
+    animation: slide-in 0.2s ease;
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .log-entry .event-type { font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .log-entry .event-ts   { font-size: 10px; color: var(--muted); text-align: right; font-family: monospace; }
+  .log-entry .event-body { color: var(--muted); grid-column: span 2; }
+  .log-entry .event-tag  { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+  .tag-executed   { background: #1a4528; color: var(--green); }
+  .tag-suppressed { background: #4a1c1c; color: var(--red); }
+  .tag-approved   { background: #1a3a28; color: #56d364; }
+  .tag-blocked    { background: #4a1c1c; color: #ff7b72; }
+  .tag-alert      { background: #4a2c00; color: var(--orange); }
+
+  .border-decider  { border-left-color: var(--blue); }
+  .border-verifier { border-left-color: var(--purple); }
+  .border-actuation { border-left-color: var(--orange); }
+  .border-can      { border-left-color: #334; }
+  .border-alert    { border-left-color: var(--red); }
+  .border-heartbeat { border-left-color: #234; }
+
+  /* ── Right panel: CAN bus ────────────────────────────────────── */
+  .can-metric { display: flex; flex-direction: column; gap: 4px; }
+  .can-metric-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .can-metric-name { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .can-metric-val  { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .can-metric-unit { font-size: 11px; color: var(--muted); margin-left: 2px; }
+
+  .speed-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .speed-bar { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.2s; }
+
+  canvas#steering-canvas {
+    width: 100%;
+    height: 70px;
+    display: block;
+  }
+
+  #brake-status {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 5px;
+    text-align: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  #brake-status.brake-off  { background: #1a2a1a; border-color: #3fb95055; color: var(--green); }
+  #brake-status.brake-light{ background: #2a2a1a; border-color: var(--yellow); color: var(--yellow); }
+  #brake-status.brake-hard { background: #2a1a1a; border-color: var(--red); color: var(--red); }
+
+  /* CAN sparklines */
+  canvas.can-spark {
+    width: 100%;
+    height: 36px;
+    background: #0d1117;
+    border-radius: 3px;
+    display: block;
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* Flicker animation on new CAN data */
+  @keyframes can-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(88,166,255,0.4); }
+    70%  { box-shadow: 0 0 0 6px rgba(88,166,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(88,166,255,0); }
+  }
+  .can-pulse { animation: can-pulse 0.4s ease; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────── -->
+<header>
+  <h1>DVA ADAS Co-Pilot</h1>
+  <span id="conn-badge">DISCONNECTED</span>
+  <span class="spacer"></span>
+  <span id="backend-url">ws://localhost:8000/ws/events</span>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- ── LEFT: Vision + Controls ───────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Vision &amp; Controls</div>
+    <div class="panel-body">
+
+      <!-- Webcam preview — MJPEG stream from backend (no browser cam needed) -->
+      <div id="cam-wrap">
+        <img id="cam-img" src="/video_feed" alt="webcam feed">
+        <div id="cam-overlay"><span id="cam-label">backend camera feed</span></div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- EAR -->
+      <div class="metric-row">
+        <span class="metric-label">EAR (Eye Aspect Ratio)</span>
+        <span class="metric-sub">threshold 0.21</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-value" id="ear-val">–</span>
+        <span id="ear-state" style="font-size:11px;font-weight:700;"></span>
+      </div>
+      <div id="ear-bar-wrap"><div id="ear-bar" style="width:100%"></div></div>
+      <canvas id="ear-sparkline"></canvas>
+
+      <hr class="divider">
+
+      <!-- Head pose -->
+      <div class="metric-row">
+        <span class="metric-label">Head Pose (Verifier)</span>
+      </div>
+      <canvas id="pose-canvas"></canvas>
+      <div class="metric-row" style="margin-top:-4px">
+        <span class="metric-sub">Yaw: <b id="pose-yaw">–</b>°</span>
+        <span class="metric-sub">Pitch: <b id="pose-pitch">–</b>°</span>
+        <span class="metric-sub">Thresh: ±15°</span>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Scenario buttons -->
+      <div class="metric-label">Demo Scenarios</div>
+      <div class="scenario-grid">
+        <button class="btn btn-a" onclick="setScenario('A')">A — Execute</button>
+        <button class="btn btn-b" onclick="setScenario('B')">B — Head Turn</button>
+        <button class="btn btn-c" onclick="setScenario('C')">C — Hard Brake</button>
+        <button class="btn btn-r" onclick="resetScenario()">Reset (Normal Sim)</button>
+      </div>
+      <div id="scenario-status">–</div>
+    </div>
+  </div>
+
+  <!-- ── CENTRE: Event log ─────────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Event Stream</div>
+    <div class="panel-body">
+
+      <!-- Episode banner -->
+      <div id="episode-banner">
+        <div id="ep-status">No active episode</div>
+        <div id="ep-action" style="color:var(--muted)">–</div>
+        <div id="ep-decision"></div>
+        <div id="ep-id"></div>
+      </div>
+
+      <!-- Live log -->
+      <div id="event-log"></div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: CAN Bus ────────────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Simulated CAN Bus</div>
+    <div class="panel-body">
+
+      <!-- Speed -->
+      <div class="can-metric" id="can-panel">
+        <div class="can-metric-top">
+          <span class="can-metric-name">Speed</span>
+          <span>
+            <span class="can-metric-val" id="can-speed">–</span>
+            <span class="can-metric-unit">km/h</span>
+          </span>
+        </div>
+        <div class="speed-bar-wrap">
+          <div class="speed-bar" id="speed-bar" style="width:0%"></div>
+        </div>
+        <canvas class="can-spark" id="speed-spark"></canvas>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Steering -->
+      <div class="can-metric">
+        <div class="can-metric-top">
+          <span class="can-metric-name">Steering Angle</span>
+          <span>
+            <span class="can-metric-val" id="can-steering">–</span>
+            <span class="can-metric-unit">°</span>
+          </span>
+        </div>
+        <canvas id="steering-canvas"></canvas>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Brake -->
+      <div class="can-metric">
+        <div class="can-metric-top">
+          <span class="can-metric-name">Brake Status</span>
+        </div>
+        <div id="brake-status" class="brake-off">OFF</div>
+        <canvas class="can-spark" id="brake-spark"></canvas>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Stats -->
+      <div class="metric-label">Session Stats</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px">
+        <div style="text-align:center;background:var(--panel);border-radius:5px;padding:8px;">
+          <div style="font-size:22px;font-weight:700;color:var(--green)" id="stat-executed">0</div>
+          <div style="font-size:10px;color:var(--muted)">EXECUTED</div>
+        </div>
+        <div style="text-align:center;background:var(--panel);border-radius:5px;padding:8px;">
+          <div style="font-size:22px;font-weight:700;color:var(--red)" id="stat-suppressed">0</div>
+          <div style="font-size:10px;color:var(--muted)">SUPPRESSED</div>
+        </div>
+        <div style="text-align:center;background:var(--panel);border-radius:5px;padding:8px;">
+          <div style="font-size:22px;font-weight:700;color:var(--blue)" id="stat-episodes">0</div>
+          <div style="font-size:10px;color:var(--muted)">EPISODES</div>
+        </div>
+        <div style="text-align:center;background:var(--panel);border-radius:5px;padding:8px;">
+          <div style="font-size:22px;font-weight:700;color:var(--orange)" id="stat-alerts">0</div>
+          <div style="font-size:10px;color:var(--muted)">ALERTS</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── Configuration ──────────────────────────────────────────────────────────
+const WS_URL   = 'ws://localhost:8000/ws/events';
+const API_BASE = 'http://localhost:8000';
+const EAR_THRESHOLD = 0.21;
+const MAX_LOG_ENTRIES = 120;
+const MAX_SPARK_POINTS = 80;
+
+// ── State ──────────────────────────────────────────────────────────────────
+let ws = null;
+const earHistory     = [];
+const speedHistory   = [];
+const brakeHistory   = [];
+let lastYaw   = 0, lastPitch = 0;
+let stats = { executed: 0, suppressed: 0, episodes: new Set(), alerts: 0 };
+
+// ── Canvas refs ────────────────────────────────────────────────────────────
+const earCanvas      = document.getElementById('ear-sparkline');
+const poseCanvas     = document.getElementById('pose-canvas');
+const steeringCanvas = document.getElementById('steering-canvas');
+const speedSparkCvs  = document.getElementById('speed-spark');
+const brakeSparkCvs  = document.getElementById('brake-spark');
+
+function resizeAllCanvases() {
+  [earCanvas, poseCanvas, steeringCanvas, speedSparkCvs, brakeSparkCvs].forEach(c => {
+    c.width  = c.offsetWidth  * devicePixelRatio;
+    c.height = c.offsetHeight * devicePixelRatio;
+  });
+}
+window.addEventListener('resize', resizeAllCanvases);
+setTimeout(resizeAllCanvases, 100);
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen  = () => setBadge(true);
+  ws.onclose = () => { setBadge(false); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (msg) => handleEvent(JSON.parse(msg.data));
+}
+
+function setBadge(connected) {
+  const b = document.getElementById('conn-badge');
+  b.textContent = connected ? 'CONNECTED' : 'RECONNECTING…';
+  b.className   = connected ? 'connected' : '';
+}
+
+// ── Event router ───────────────────────────────────────────────────────────
+function handleEvent(evt) {
+  switch (evt.event) {
+    case 'ear_heartbeat':   onEarHeartbeat(evt);  break;
+    case 'can_bus_event':   onCanBus(evt);         break;
+    case 'decider_event':   onDecider(evt);        break;
+    case 'verifier_event':  onVerifier(evt);       break;
+    case 'actuation_event': onActuation(evt);      break;
+    case 'alert_issued':    onAlert(evt);          break;
+  }
+}
+
+// ── EAR heartbeat ─────────────────────────────────────────────────────────
+function onEarHeartbeat(evt) {
+  const ear = evt.ear_value;
+  earHistory.push(ear);
+  if (earHistory.length > MAX_SPARK_POINTS) earHistory.shift();
+
+  const el = document.getElementById('ear-val');
+  el.textContent = ear.toFixed(4);
+  el.style.color = ear < EAR_THRESHOLD ? 'var(--red)' : 'var(--green)';
+
+  const pct = Math.min(100, Math.max(0, (ear / 0.5) * 100));
+  const bar = document.getElementById('ear-bar');
+  bar.style.width = pct + '%';
+  bar.style.background = ear < EAR_THRESHOLD ? 'var(--red)' : 'var(--green)';
+
+  document.getElementById('ear-state').textContent =
+    ear < EAR_THRESHOLD ? '⚠ DROWSY' : '✓ ALERT';
+  document.getElementById('ear-state').style.color =
+    ear < EAR_THRESHOLD ? 'var(--red)' : 'var(--green)';
+
+  drawEarSparkline();
+}
+
+function drawEarSparkline() {
+  const c = earCanvas;
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  const dpr = devicePixelRatio;
+  ctx.clearRect(0, 0, w, h);
+
+  if (earHistory.length < 2) return;
+
+  const maxEar = 0.5, minEar = 0.0;
+  const threshY = h - ((EAR_THRESHOLD - minEar) / (maxEar - minEar)) * h;
+
+  // threshold line
+  ctx.strokeStyle = 'rgba(210,153,34,0.5)';
+  ctx.lineWidth = 1 * dpr;
+  ctx.setLineDash([4 * dpr, 4 * dpr]);
+  ctx.beginPath();
+  ctx.moveTo(0, threshY);
+  ctx.lineTo(w, threshY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // EAR line
+  ctx.strokeStyle = 'var(--blue)';
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.beginPath();
+  earHistory.forEach((v, i) => {
+    const x = (i / (MAX_SPARK_POINTS - 1)) * w;
+    const y = h - ((v - minEar) / (maxEar - minEar)) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+// ── Head pose ──────────────────────────────────────────────────────────────
+function onVerifier(evt) {
+  lastYaw   = evt.yaw   || 0;
+  lastPitch = evt.pitch || 0;
+  document.getElementById('pose-yaw').textContent   = lastYaw.toFixed(1);
+  document.getElementById('pose-pitch').textContent = lastPitch.toFixed(1);
+  drawPose();
+  updateEpisodeBanner('verifier', evt);
+  addLogEntry('verifier_event', evt);
+}
+
+function drawPose() {
+  const c = poseCanvas;
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  const dpr = devicePixelRatio;
+  ctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2;
+  const r  = Math.min(cx, cy) - 4 * dpr;
+
+  // outer ring
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth   = 1 * dpr;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.stroke();
+
+  // threshold zone
+  const threshRatio = 15 / 90;
+  ctx.fillStyle = 'rgba(63,185,80,0.07)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * threshRatio * 3, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // cross-hairs
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth   = 1 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+  ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+  ctx.stroke();
+
+  // head dot — map yaw/pitch to x/y on circle
+  const scale = r / 90;
+  const dx = (lastYaw   / 90) * r;
+  const dy = -(lastPitch / 90) * r;
+
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const inZone = Math.abs(lastYaw) < 15 && Math.abs(lastPitch) < 15;
+  const dotColor = inZone ? 'var(--green)' : 'var(--red)';
+
+  // line from center
+  ctx.strokeStyle = dotColor;
+  ctx.lineWidth   = 1.5 * dpr;
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + dx, cy + dy);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // dot
+  ctx.fillStyle = dotColor;
+  ctx.beginPath();
+  ctx.arc(cx + dx, cy + dy, 5 * dpr, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+// ── CAN bus ────────────────────────────────────────────────────────────────
+function onCanBus(evt) {
+  const speed    = evt.speed_kmh;
+  const steering = evt.steering_angle_deg;
+  const brake    = evt.brake_status;
+
+  document.getElementById('can-speed').textContent    = speed.toFixed(1);
+  document.getElementById('can-steering').textContent = steering.toFixed(1);
+
+  const pct = Math.min(100, (speed / 120) * 100);
+  document.getElementById('speed-bar').style.width = pct + '%';
+
+  const brakeEl = document.getElementById('brake-status');
+  brakeEl.textContent = brake.replace('_', ' ');
+  brakeEl.className = {
+    'OFF':          'brake-off',
+    'LIGHT_BRAKING':'brake-light',
+    'HARD_BRAKING': 'brake-hard',
+  }[brake] || 'brake-off';
+
+  speedHistory.push(speed);
+  if (speedHistory.length > MAX_SPARK_POINTS) speedHistory.shift();
+  brakeHistory.push(brake === 'HARD_BRAKING' ? 1 : brake === 'LIGHT_BRAKING' ? 0.5 : 0);
+  if (brakeHistory.length > MAX_SPARK_POINTS) brakeHistory.shift();
+
+  drawSpeedSpark();
+  drawSteeringGauge(steering);
+  drawBrakeSpark();
+
+  // Pulse the CAN panel
+  const panel = document.getElementById('can-panel');
+  panel.classList.remove('can-pulse');
+  void panel.offsetWidth;
+  panel.classList.add('can-pulse');
+}
+
+function drawSpeedSpark() {
+  drawLineSpark(speedSparkCvs, speedHistory, 0, 120, 'var(--blue)');
+}
+
+function drawBrakeSpark() {
+  drawLineSpark(brakeSparkCvs, brakeHistory, 0, 1, 'var(--red)');
+}
+
+function drawLineSpark(canvas, data, minV, maxV, color) {
+  const c   = canvas;
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  if (data.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5 * devicePixelRatio;
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = (i / (MAX_SPARK_POINTS - 1)) * w;
+    const y = h - ((v - minV) / (maxV - minV)) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function drawSteeringGauge(angle) {
+  const c   = steeringCanvas;
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  const dpr = devicePixelRatio;
+  ctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h * 0.75;
+  const r  = Math.min(w * 0.4, cy - 4 * dpr);
+
+  // Track arc
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth   = 6 * dpr;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+  ctx.stroke();
+
+  // Threshold markers at ±10°
+  const toRad = (deg) => Math.PI + (deg / 180) * Math.PI;
+  ctx.strokeStyle = '#d2992255';
+  ctx.lineWidth   = 2 * dpr;
+  [-10, 10].forEach(deg => {
+    const a = toRad(deg);
+    ctx.beginPath();
+    ctx.moveTo(cx + (r - 8 * dpr) * Math.cos(a), cy + (r - 8 * dpr) * Math.sin(a));
+    ctx.lineTo(cx + (r + 8 * dpr) * Math.cos(a), cy + (r + 8 * dpr) * Math.sin(a));
+    ctx.stroke();
+  });
+
+  // Value arc
+  const clampedAngle = Math.max(-90, Math.min(90, angle));
+  const endAngle     = toRad(clampedAngle);
+  const inRange      = Math.abs(angle) <= 10;
+  ctx.strokeStyle = inRange ? 'var(--green)' : 'var(--red)';
+  ctx.lineWidth   = 6 * dpr;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, endAngle, clampedAngle < 0);
+  ctx.stroke();
+
+  // Needle dot
+  ctx.fillStyle = inRange ? 'var(--green)' : 'var(--red)';
+  ctx.beginPath();
+  ctx.arc(cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle), 5 * dpr, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = '#8b949e';
+  ctx.font      = `${10 * dpr}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('-90°', cx - r - 4 * dpr, cy + 16 * dpr);
+  ctx.textAlign = 'right';
+  ctx.fillText('+90°', cx + r + 4 * dpr, cy + 16 * dpr);
+}
+
+// ── Decider ────────────────────────────────────────────────────────────────
+function onDecider(evt) {
+  stats.episodes.add(evt.episode_id);
+  document.getElementById('stat-episodes').textContent = stats.episodes.size;
+  updateEpisodeBanner('decider', evt);
+  addLogEntry('decider_event', evt);
+}
+
+// ── Actuation ──────────────────────────────────────────────────────────────
+function onActuation(evt) {
+  if (evt.final_status === 'EXECUTED') {
+    stats.executed++;
+    document.getElementById('stat-executed').textContent = stats.executed;
+  } else {
+    stats.suppressed++;
+    document.getElementById('stat-suppressed').textContent = stats.suppressed;
+  }
+  updateEpisodeBanner('actuation', evt);
+  addLogEntry('actuation_event', evt);
+}
+
+// ── Alert ──────────────────────────────────────────────────────────────────
+function onAlert(evt) {
+  stats.alerts++;
+  document.getElementById('stat-alerts').textContent = stats.alerts;
+  addLogEntry('alert_issued', evt);
+}
+
+// ── Episode banner ─────────────────────────────────────────────────────────
+function updateEpisodeBanner(stage, evt) {
+  const banner = document.getElementById('episode-banner');
+  const status = document.getElementById('ep-status');
+  const action = document.getElementById('ep-action');
+  const decision = document.getElementById('ep-decision');
+  const epId   = document.getElementById('ep-id');
+
+  if (stage === 'decider') {
+    banner.className = 'episode-active';
+    status.textContent  = 'Episode active — awaiting verification';
+    action.textContent  = evt.proposed_action.replace(/_/g, ' ');
+    action.style.color  = 'var(--yellow)';
+    decision.textContent = '';
+    epId.textContent    = evt.episode_id;
+  } else if (stage === 'verifier') {
+    const ok = evt.decision === 'APPROVED';
+    decision.innerHTML  = `Verifier: <b style="color:${ok ? 'var(--green)' : 'var(--red)'}">${evt.decision}</b> — ${evt.reason}`;
+  } else if (stage === 'actuation') {
+    const ok = evt.final_status === 'EXECUTED';
+    banner.className    = ok ? 'episode-approved' : 'episode-blocked';
+    status.textContent  = 'Episode complete';
+    action.style.color  = ok ? 'var(--green)' : 'var(--red)';
+  }
+}
+
+// ── Log entries ────────────────────────────────────────────────────────────
+function addLogEntry(type, evt) {
+  const log = document.getElementById('event-log');
+
+  // Skip noisy can_bus_event and heartbeat from log
+  if (type === 'can_bus_event' || type === 'ear_heartbeat') return;
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + {
+    decider_event:  'border-decider',
+    verifier_event: 'border-verifier',
+    actuation_event:'border-actuation',
+    alert_issued:   'border-alert',
+  }[type];
+
+  const ts = evt.timestamp ? evt.timestamp.split('T')[1]?.slice(0,12) : '';
+
+  let typeLabel = type.replace('_event','').replace('_',' ').toUpperCase();
+  let body = '';
+  let tag  = '';
+
+  if (type === 'decider_event') {
+    body = `EAR ${evt.ear_value?.toFixed(4)} → <b>${evt.proposed_action?.replace(/_/g,' ')}</b>`;
+    body += `<br>ep: <code style="font-size:10px">${evt.episode_id?.slice(0,8)}…</code>`;
+  } else if (type === 'verifier_event') {
+    const ok = evt.decision === 'APPROVED';
+    tag  = `<span class="event-tag ${ok ? 'tag-approved' : 'tag-blocked'}">${evt.decision}</span>`;
+    body = `yaw ${evt.yaw?.toFixed(1)}° pitch ${evt.pitch?.toFixed(1)}° | speed ${evt.can_snapshot?.speed_kmh?.toFixed(0)} km/h ${evt.can_snapshot?.brake_status}`;
+    if (!ok) body += `<br><span style="color:var(--red)">${evt.reason}</span>`;
+  } else if (type === 'actuation_event') {
+    const ok = evt.final_status === 'EXECUTED';
+    tag  = `<span class="event-tag ${ok ? 'tag-executed' : 'tag-suppressed'}">${evt.final_status}</span>`;
+    body = `${evt.proposed_action?.replace(/_/g,' ')}`;
+    if (evt.alert_issued) body += ' | <span style="color:var(--orange)">⚠ alert issued</span>';
+  } else if (type === 'alert_issued') {
+    tag  = `<span class="event-tag tag-alert">ALERT</span>`;
+    body = evt.reason || '';
+  }
+
+  entry.innerHTML = `
+    <span class="event-type">${typeLabel}</span>
+    <span class="event-ts">${ts} ${tag}</span>
+    <span class="event-body">${body}</span>
+  `;
+
+  log.prepend(entry);
+
+  // Trim old entries
+  while (log.children.length > MAX_LOG_ENTRIES) {
+    log.removeChild(log.lastChild);
+  }
+}
+
+// ── Scenario control ───────────────────────────────────────────────────────
+async function setScenario(s) {
+  try {
+    const r = await fetch(`${API_BASE}/api/scenario/${s}`, { method: 'POST' });
+    const j = await r.json();
+    document.getElementById('scenario-status').textContent = j.label || j.error || '?';
+    document.getElementById('scenario-status').style.color = j.error ? 'var(--red)' : 'var(--blue)';
+  } catch (e) {
+    document.getElementById('scenario-status').textContent = 'Could not reach backend';
+    document.getElementById('scenario-status').style.color = 'var(--red)';
+  }
+}
+
+async function resetScenario() {
+  try {
+    const r = await fetch(`${API_BASE}/api/reset`, { method: 'POST' });
+    const j = await r.json();
+    document.getElementById('scenario-status').textContent = j.label || 'Reset OK';
+    document.getElementById('scenario-status').style.color = 'var(--muted)';
+  } catch (e) {
+    document.getElementById('scenario-status').textContent = 'Could not reach backend';
+    document.getElementById('scenario-status').style.color = 'var(--red)';
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+connect();
+setTimeout(resizeAllCanvases, 200);
+drawPose();
+</script>
+</body>
+</html>

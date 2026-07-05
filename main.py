@@ -23,10 +23,16 @@ Hotkeys (while running, focus the terminal):
 import argparse
 import asyncio
 import sys
+import time
 import threading
+from pathlib import Path
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 import uvicorn
+
+_MODEL_PATH = str(Path(__file__).parent / "face_landmarker.task")
 
 from config_loader import config
 from can_bus_simulator import CanBusSimulator
@@ -69,14 +75,17 @@ def _apply_scenario(can_bus: CanBusSimulator, scenario: str):
 def _vision_thread(can_bus: CanBusSimulator, decider: Decider,
                    verifier: Verifier, actuation_log: ActuationLog,
                    no_cam: bool):
-    mp_face_mesh = mp.solutions.face_mesh
-    face_mesh = mp_face_mesh.FaceMesh(
-        static_image_mode=False,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
+    # Build FaceLandmarker using the Tasks API (mediapipe >= 0.10)
+    base_options = mp_python.BaseOptions(model_asset_path=_MODEL_PATH)
+    options = mp_vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_faces=1,
+        min_face_detection_confidence=0.5,
+        min_face_presence_confidence=0.5,
         min_tracking_confidence=0.5,
     )
+    face_landmarker = mp_vision.FaceLandmarker.create_from_options(options)
 
     cap = None
     if not no_cam:
@@ -87,15 +96,13 @@ def _vision_thread(can_bus: CanBusSimulator, decider: Decider,
 
     print("[VISION] Processing loop started.")
     frame_w, frame_h = 640, 480
+    frame_ts_ms = 0  # monotonic timestamp in ms required by VIDEO mode
 
     try:
         while True:
             if no_cam:
-                # Synthetic frame with no face — just keep the CAN bus running
-                asyncio.run_coroutine_threadsafe(
-                    _no_face_tick(), _loop
-                ).result(timeout=1.0)
-                import time; time.sleep(1 / 15)
+                asyncio.run_coroutine_threadsafe(_no_face_tick(), _loop).result(timeout=1.0)
+                time.sleep(1 / 15)
                 continue
 
             ret, frame = cap.read()
@@ -103,18 +110,21 @@ def _vision_thread(can_bus: CanBusSimulator, decider: Decider,
                 continue
 
             frame_h, frame_w = frame.shape[:2]
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            rgb.flags.writeable = False
-            results = face_mesh.process(rgb)
-            rgb.flags.writeable = True
+            frame_ts_ms = int(time.monotonic() * 1000)
 
-            if not results.multi_face_landmarks:
+            # Push raw frame to the MJPEG feed before any processing
+            srv.set_latest_frame(frame)
+
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            result = face_landmarker.detect_for_video(mp_image, frame_ts_ms)
+
+            if not result.face_landmarks:
                 # No face detected — skip gracefully
                 continue
 
-            landmarks = results.multi_face_landmarks[0].landmark
+            landmarks = result.face_landmarks[0]  # list of NormalizedLandmark
 
-            # Submit processing coroutine to the asyncio loop
             future = asyncio.run_coroutine_threadsafe(
                 _process_frame(landmarks, frame_w, frame_h,
                                can_bus, decider, verifier, actuation_log),
@@ -126,7 +136,7 @@ def _vision_thread(can_bus: CanBusSimulator, decider: Decider,
                 print(f"[VISION] Frame processing error: {exc}")
 
     finally:
-        face_mesh.close()
+        face_landmarker.close()
         if cap:
             cap.release()
         print("[VISION] Loop stopped.")
@@ -257,7 +267,7 @@ async def main_async(args):
     # --- Start FastAPI server ---
     host = config["server"]["host"]
     port = config["server"]["port"]
-    print(f"[SERVER] Starting at http://{host}:{port}")
+    print(f"[SERVER] Open dashboard at http://localhost:{port}  (binding {host}:{port})")
     uvi_config = uvicorn.Config(
         app=srv.app,
         host=host,
