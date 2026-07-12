@@ -4,6 +4,7 @@ from models import CanSnapshot, CanBusEvent
 from config_loader import config
 from typing import Optional, Callable, Awaitable
 
+
 class CanBusSimulator:
     def __init__(self):
         self.interval_ms = config["can_bus"]["tick_interval_ms"]
