@@ -37,7 +37,7 @@ class ActuationLog:
         payload = evt.model_dump()
         self._buffer.append(payload)
 
-        # If blocked, also append an ALERT event into the buffer for the dashboard
+        # If blocked, append an ALERT event to the buffer for the dashboard
         if alert_issued:
             alert_payload = {
                 "event": "alert_issued",
@@ -52,7 +52,7 @@ class ActuationLog:
         return evt
 
     def record_raw(self, event_dict: dict):
-        """Store any raw event dict in the ring buffer (decider/verifier/can)."""
+        """Store raw event dict in the ring buffer (decider/verifier/can)."""
         self._buffer.append(event_dict)
 
     def get_history(self) -> list:
