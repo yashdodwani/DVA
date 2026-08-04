@@ -37,7 +37,7 @@ class ActuationLog:
         payload = evt.model_dump()
         self._buffer.append(payload)
 
-        # If blocked, append an ALERT event to the buffer for the dashboard
+        # If blocked, append an ALERT event into the buffer for the dashboard
         if alert_issued:
             alert_payload = {
                 "event": "alert_issued",
